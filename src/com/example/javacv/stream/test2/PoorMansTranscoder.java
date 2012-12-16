@@ -1,11 +1,11 @@
 package com.example.javacv.stream.test2;
 
-import com.googlecode.javacv.FFmpegFrameRecorder;
+//import com.googlecode.javacv.FFmpegFrameRecorder;
 import com.googlecode.javacv.FrameGrabber;
 import com.googlecode.javacv.Frame;
 import com.googlecode.javacv.FFmpegFrameGrabber;
 import com.googlecode.javacv.FrameGrabber.Exception;
-import com.googlecode.javacv.FrameRecorder;
+//import com.googlecode.javacv.FrameRecorder;
 import com.googlecode.javacv.cpp.avcodec;
 
 import android.app.Activity;
@@ -34,7 +34,7 @@ public class PoorMansTranscoder extends Activity {
     	        	FrameGrabber grabber = new FFmpegFrameGrabber("/mnt/sdcard/input.mp4");			
     				grabber.start();
     				
-    				FrameRecorder recorder = new MyFFmpegFrameRecorder("/mnt/sdcard/output.mp4", grabber.getImageWidth(), grabber.getImageHeight(), 1);
+    				MyFrameRecorder recorder = new MyFFmpegFrameRecorder("/mnt/sdcard/output.mp4", grabber.getImageWidth(), grabber.getImageHeight(), 1);
     				recorder.setAudioCodec(avcodec.AV_CODEC_ID_AAC);
     				recorder.setFrameRate(grabber.getFrameRate());
     				//recorder.setSampleFormat(grabber.getSampleFormat());
@@ -48,7 +48,8 @@ public class PoorMansTranscoder extends Activity {
     	        	}
     	        	recorder.stop();
     	        	grabber.stop();
-    	        } catch (com.googlecode.javacv.FrameRecorder.Exception e) {
+    	        } catch (MyFrameRecorder.Exception e) {
+    	        //} catch (com.googlecode.javacv.FrameRecorder.Exception e) {
     				e.printStackTrace();
     			} catch (Exception e) {
     				e.printStackTrace();

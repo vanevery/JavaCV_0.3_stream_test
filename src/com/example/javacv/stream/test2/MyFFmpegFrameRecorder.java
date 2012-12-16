@@ -80,7 +80,7 @@ import static com.googlecode.javacv.cpp.swscale.*;
  *
  * @author Samuel Audet
  */
-public class MyFFmpegFrameRecorder extends FrameRecorder {
+public class MyFFmpegFrameRecorder extends MyFrameRecorder {
     public static MyFFmpegFrameRecorder createDefault(File f, int w, int h)   throws Exception { return new MyFFmpegFrameRecorder(f, w, h); }
     public static MyFFmpegFrameRecorder createDefault(String f, int w, int h) throws Exception { return new MyFFmpegFrameRecorder(f, w, h); }
 
@@ -280,7 +280,6 @@ public class MyFFmpegFrameRecorder extends FrameRecorder {
         }
 
         oc.oformat(oformat);
-        Log.v("BLAH",filename);
         oc.filename(filename);
 
         /* add the audio and video streams using the format codecs

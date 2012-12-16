@@ -5,7 +5,7 @@ import static com.googlecode.javacv.cpp.opencv_core.*;
 import static com.googlecode.javacv.cpp.opencv_core.IplImage;
 
 //import com.googlecode.javacv.FFmpegFrameRecorder;
-import com.googlecode.javacv.FrameRecorder.Exception;
+//import com.googlecode.javacv.FrameRecorder.Exception;
 import com.googlecode.javacv.cpp.avcodec;
 
 import java.io.IOException;
@@ -38,33 +38,38 @@ import android.widget.RelativeLayout;
 import android.widget.Toast;
 
 public class MainActivity extends Activity implements OnClickListener {
-	private final static String LOG_TAG = "RecordActivity";
+	
+	private final static String CLASS_LABEL = "RecordActivity";
+	private final static String LOG_TAG = CLASS_LABEL;
+	
 	private PowerManager.WakeLock mWakeLock;
     
 	//private String ffmpeg_link = "/mnt/sdcard/stream.flv";
 
 	//private String ffmpeg_link = "rtmp://live:live@128.122.151.108:1935/live/test.flv";
-	//private String ffmpeg_link = "rtmp://live:live@192.168.1.8:1935/live/test.flv";
-	private String ffmpeg_link = "rtmp://live:live@192.168.43.176:1935/live/test.flv";
+	private String ffmpeg_link = "rtmp://live:live@192.168.1.2:1935/live/test.flv";
+	//private String ffmpeg_link = "rtmp://live:live@192.168.43.176:1935/live/test.flv";
 	
-	public boolean recording = false;
+	public volatile boolean recording = false;
 	
 	private volatile MyFFmpegFrameRecorder recorder;
 	
     private boolean isPreviewOn = false;
     
-    private int sampleAudioRateInHz = 11025;
+    private int sampleAudioRateInHz = 22050;
     private int imageWidth = 176;
     private int imageHeight = 144;
-    private int frameRate = 10;
+    private int frameRate = 5;
         	
     /* audio data getting thread */
 	private AudioRecord audioRecord;
 	private AudioRecordRunnable audioRecordRunnable;
 	private Thread audioThread;
+	volatile boolean runAudioThread = true;
 	
 	private VideoRecordRunnable videoRecordRunnable;
 	private Thread videoThread;
+	volatile boolean runVideoThread = true;
 
 	/* video data getting thread */
 	private Camera cameraDevice;
@@ -92,7 +97,7 @@ public class MainActivity extends Activity implements OnClickListener {
         setContentView(R.layout.activity_main);
 
         PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE); 
-        mWakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "XYTEST"); 
+        mWakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, CLASS_LABEL); 
         mWakeLock.acquire(); 
         
         initLayout();
@@ -106,7 +111,7 @@ public class MainActivity extends Activity implements OnClickListener {
 		
 		if (mWakeLock == null) {
 		   PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-		   mWakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, "XYTEST");
+		   mWakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, CLASS_LABEL);
 		   mWakeLock.acquire();
 		}
 	}
@@ -181,57 +186,6 @@ public class MainActivity extends Activity implements OnClickListener {
         Log.i(LOG_TAG, "cameara preview start: OK");
 	}
 	
-	public void startRecording() {
-		
-		audioThread.start();
-		videoThread.start();
-		
-		try {
-			recorder.start();
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-    	
-		recording = true;
-	}
-	
-	public void stopRecording() {
-		
-		audioRecordRunnable.runAudioThread = false;
-		videoRecordRunnable.runVideoThread = false;
-		
-
-		if (recorder != null && recording) {
-			recording = false;
-			Log.v(LOG_TAG,"Finishing recording, calling stop and release on recorder");
-			try {
-				recorder.stop();
-				recorder.release();
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-			recorder = null;
-		}
-		
-	}
-		
-	@Override
-	public boolean onKeyDown(int keyCode, KeyEvent event) {
-		
-		if (keyCode == KeyEvent.KEYCODE_BACK) {
-			if (recording) {
-				Toast.makeText(MainActivity.this, "Can't Finish, isRecorderStart", 1000).show();
-				stopRecording();
-			} else {
-				MainActivity.this.finish();
-			}
-			return true;
-		}
-		
-		return super.onKeyDown(keyCode, event);
-	}
-	
-	
 	//---------------------------------------
 	// initialize ffmpeg_recorder
 	//---------------------------------------
@@ -246,6 +200,7 @@ public class MainActivity extends Activity implements OnClickListener {
     	
 		Log.i(LOG_TAG, "ffmpeg_url: " + ffmpeg_link);
     	recorder = new MyFFmpegFrameRecorder(ffmpeg_link, imageWidth, imageHeight, 1);
+    	recorder.interleaved = false;
     	
 		recorder.setFormat("flv");
     	recorder.setAudioCodec(avcodec.AV_CODEC_ID_AAC);		
@@ -259,21 +214,71 @@ public class MainActivity extends Activity implements OnClickListener {
     	
 		audioRecordRunnable = new AudioRecordRunnable();
 		audioThread = new Thread(audioRecordRunnable);
+		audioThread.start();
 		
 		videoRecordRunnable = new VideoRecordRunnable();
 		videoThread = new Thread(videoRecordRunnable);
 	}
+	
+	public void startRecording() {
+		videoThread.start();
+		
+		try {
+			recorder.start();
+			recording = true;
+
+		} catch (Exception e) {
+			e.printStackTrace();
+		}
+	}
+	
+	public void stopRecording() {
+		
+		runAudioThread = false;
+		runVideoThread = false;
+		
+		if (recorder != null && recording) {
+			recording = false;
+			Log.v(LOG_TAG,"Finishing recording, calling stop and release on recorder");
+			try {
+				recorder.stop();
+				recorder.release();
+			} catch (Exception e) {
+				e.printStackTrace();
+			}
+			recorder = null;
+			
+		}
+	}
+		
+	@Override
+	public boolean onKeyDown(int keyCode, KeyEvent event) {
+		
+		if (keyCode == KeyEvent.KEYCODE_BACK) {
+			if (recording) {
+				stopRecording();
+			}
+			
+			finish();
+			
+			return true;
+		}
+		
+		return super.onKeyDown(keyCode, event);
+	}
+	
+	
+
     
     class VideoRecordRunnable implements Runnable {
     	
-    	boolean runVideoThread = true;
     	long lastTime = System.currentTimeMillis();
     	long currentTime = System.currentTimeMillis();
     	long minTime = 1000/frameRate;
     	
     	public void run() {
     		while (runVideoThread) {
-    			if (recording) {
+    			if (recording && yuvIplimage != null) {
 	    			currentTime = System.currentTimeMillis();
 	    			if (currentTime - lastTime >= minTime) {
 	    				Log.v(LOG_TAG,"Writing Frame");
@@ -286,6 +291,13 @@ public class MainActivity extends Activity implements OnClickListener {
 	    				lastTime = currentTime;
 					}
     			}
+    			
+    			// Let's give a chance to the other things
+    			try {
+    				Thread.sleep(minTime/2);
+    			} catch (Exception e) {
+    				e.printStackTrace();
+    			}
     		}
     	}
     }
@@ -295,86 +307,66 @@ public class MainActivity extends Activity implements OnClickListener {
 	// audio thread, gets and encodes audio data
 	//---------------------------------------------
 	class AudioRecordRunnable implements Runnable {
-		boolean runAudioThread = true;
 
 		@Override
 		public void run() {
+			
+			// Audio
 			int bufferSize;
-			short[] audioData;
+			short[] audioData, copiedAudioData;
 			int bufferReadResult;
 			
-			int bufferLength = 0;
-
-			bufferSize = AudioRecord.getMinBufferSize(sampleAudioRateInHz, 
+			int minBufferSize = AudioRecord.getMinBufferSize(sampleAudioRateInHz, 
 					AudioFormat.CHANNEL_CONFIGURATION_MONO, AudioFormat.ENCODING_PCM_16BIT);
-							
+			bufferSize = minBufferSize;				
 			audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC, sampleAudioRateInHz, 
-					AudioFormat.CHANNEL_CONFIGURATION_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize);
+					AudioFormat.CHANNEL_CONFIGURATION_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize*2);
 
-			// What is this for??								
-			if (bufferSize <= 2048) {
-				bufferLength = 2048;
-			} else if (bufferSize <= 4096) {
-				bufferLength = 4096;
-			}
-			// End What is this for??
-				
-			audioData = new short[bufferLength];
-			audioRecord.startRecording();
+			audioData = new short[bufferSize];
+			copiedAudioData = new short[bufferSize];
+			
 			Log.d(LOG_TAG, "audioRecord.startRecording()");
+			audioRecord.startRecording();
 				
 			/* ffmpeg_audio encoding loop */
 			while (runAudioThread) {
 				
 				bufferReadResult = audioRecord.read(audioData, 0, audioData.length);
 				Log.v(LOG_TAG,"bufferReadResult: " + bufferReadResult);
-				
-				if (bufferReadResult < 1024 && recording) {
-					Buffer realAudioData512 = ShortBuffer.wrap(audioData,0,bufferReadResult);
-					try {
-						recorder.record(realAudioData512);
-					} catch (Exception e) {
-						Log.v(LOG_TAG,e.getMessage());
-						e.printStackTrace();
-					}
+				System.arraycopy(audioData, 0, copiedAudioData, 0, bufferReadResult);
+
+				if (recording && bufferReadResult > 0 && bufferReadResult < 1024 && recording) {
 					
-				} else if (bufferReadResult == 1024 && recording) {
-					Buffer realAudioData1024 = ShortBuffer.wrap(audioData,0,1024);
+					Buffer realAudioData = ShortBuffer.wrap(copiedAudioData,0,bufferReadResult);
+					//Buffer realAudioData = ShortBuffer.wrap(audioData,0,bufferReadResult);
 					try {
-						recorder.record(realAudioData1024);
+						recorder.record(realAudioData);
 					} catch (Exception e) {
 						Log.v(LOG_TAG,e.getMessage());
 						e.printStackTrace();
 					}
-				} else if (bufferReadResult == 2048 && recording) {
-					Buffer realAudioData2048_1=ShortBuffer.wrap(audioData, 0, 1024);
-					Buffer realAudioData2048_2=ShortBuffer.wrap(audioData, 1024, 1024);
-					for (int i = 0; i < 2; i++) {
-						if (i == 0) {
-							try {
-								recorder.record(realAudioData2048_1);
-							} catch (Exception e) {
-								Log.v(LOG_TAG,e.getMessage());
-								e.printStackTrace();
-							}
-						} else if (i == 1) {
-							try {
-								recorder.record(realAudioData2048_2);
-							} catch (Exception e) {
-								Log.v(LOG_TAG,e.getMessage());
-								e.printStackTrace();
-							}
+				} else if (recording && bufferReadResult >= 1024) {
+					int times = bufferReadResult/1024;
+					
+					for (int i = 0; i < times; i++) {
+						Buffer realAudioData =ShortBuffer.wrap(copiedAudioData, 1024*i, 1024*i+1024);
+						//Buffer realAudioData =ShortBuffer.wrap(audioData, 1024*i, 1024*i+1024);
+						try {
+							recorder.record(realAudioData);
+						} catch (Exception e) {
+							Log.v(LOG_TAG,e.getMessage());
+							e.printStackTrace();
 						}
 					}
+				} else if (bufferReadResult == 0) {
+					try {
+						Log.v(LOG_TAG,"Sleeping");
+						Thread.sleep(10);
+					} catch (InterruptedException e) {
+						// TODO Auto-generated catch block
+						e.printStackTrace();
+					}
 				}
-				//recorder.record(yuvIplimage);
-				
-				
-				/*					
-				if (recording) {						
-			    	recorder.record(ShortBuffer.wrap(audioData, 0, audioData.length));
-				}
-				*/
 			}
 			Log.v(LOG_TAG,"AudioThread Finished, release audioRecord");
 				
@@ -421,13 +413,12 @@ public class MainActivity extends Activity implements OnClickListener {
     		Log.v(LOG_TAG,"Setting imageWidth: " + imageWidth + " imageHeight: " + imageHeight + " frameRate: " + frameRate);
             Camera.Parameters camParams = mCamera.getParameters();
         	camParams.setPreviewSize(imageWidth, imageHeight);
-        	//camParams.setPreviewFrameRate(frameRate);
+        	
+        	Log.v(LOG_TAG,"Preview Framerate: " + camParams.getPreviewFrameRate());
+        	
+        	camParams.setPreviewFrameRate(frameRate);
             mCamera.setParameters(camParams);
-            startPreview();
-
-        	//frameRate = camParams.getPreviewFrameRate();
-        	//recorder.setFrameRate(frameRate);
-    	
+            startPreview();    	
     	}
 
     	@Override
