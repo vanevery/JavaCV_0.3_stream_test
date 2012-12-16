@@ -56,7 +56,7 @@ public class MainActivity extends Activity implements OnClickListener {
 	
     private boolean isPreviewOn = false;
     
-    private int sampleAudioRateInHz = 22050;
+    private int sampleAudioRateInHz = 44100;
     private int imageWidth = 176;
     private int imageHeight = 144;
     private int frameRate = 5;
@@ -320,10 +320,10 @@ public class MainActivity extends Activity implements OnClickListener {
 					AudioFormat.CHANNEL_CONFIGURATION_MONO, AudioFormat.ENCODING_PCM_16BIT);
 			bufferSize = minBufferSize;				
 			audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC, sampleAudioRateInHz, 
-					AudioFormat.CHANNEL_CONFIGURATION_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize*2);
+					AudioFormat.CHANNEL_CONFIGURATION_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize);
 
 			audioData = new short[bufferSize];
-			copiedAudioData = new short[bufferSize];
+			//copiedAudioData = new short[bufferSize];
 			
 			Log.d(LOG_TAG, "audioRecord.startRecording()");
 			audioRecord.startRecording();
@@ -333,12 +333,12 @@ public class MainActivity extends Activity implements OnClickListener {
 				
 				bufferReadResult = audioRecord.read(audioData, 0, audioData.length);
 				Log.v(LOG_TAG,"bufferReadResult: " + bufferReadResult);
-				System.arraycopy(audioData, 0, copiedAudioData, 0, bufferReadResult);
+				//System.arraycopy(audioData, 0, copiedAudioData, 0, bufferReadResult);
 
 				if (recording && bufferReadResult > 0 && bufferReadResult < 1024 && recording) {
 					
-					Buffer realAudioData = ShortBuffer.wrap(copiedAudioData,0,bufferReadResult);
-					//Buffer realAudioData = ShortBuffer.wrap(audioData,0,bufferReadResult);
+					//Buffer realAudioData = ShortBuffer.wrap(copiedAudioData,0,bufferReadResult);
+					Buffer realAudioData = ShortBuffer.wrap(audioData,0,bufferReadResult);
 					try {
 						recorder.record(realAudioData);
 					} catch (Exception e) {
@@ -349,8 +349,8 @@ public class MainActivity extends Activity implements OnClickListener {
 					int times = bufferReadResult/1024;
 					
 					for (int i = 0; i < times; i++) {
-						Buffer realAudioData =ShortBuffer.wrap(copiedAudioData, 1024*i, 1024*i+1024);
-						//Buffer realAudioData =ShortBuffer.wrap(audioData, 1024*i, 1024*i+1024);
+						//Buffer realAudioData =ShortBuffer.wrap(copiedAudioData, 1024*i, 1024*i+1024);
+						Buffer realAudioData =ShortBuffer.wrap(audioData, 1024*i, 1024*i+1024);
 						try {
 							recorder.record(realAudioData);
 						} catch (Exception e) {
@@ -358,7 +358,7 @@ public class MainActivity extends Activity implements OnClickListener {
 							e.printStackTrace();
 						}
 					}
-				} else if (bufferReadResult == 0) {
+				} /*else if (bufferReadResult == 0) {
 					try {
 						Log.v(LOG_TAG,"Sleeping");
 						Thread.sleep(10);
@@ -366,7 +366,7 @@ public class MainActivity extends Activity implements OnClickListener {
 						// TODO Auto-generated catch block
 						e.printStackTrace();
 					}
-				}
+				}*/
 			}
 			Log.v(LOG_TAG,"AudioThread Finished, release audioRecord");
 				
