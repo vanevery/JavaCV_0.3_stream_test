@@ -46,11 +46,11 @@ public class MainActivity extends Activity implements OnClickListener {
     
 	//private String ffmpeg_link = "/mnt/sdcard/stream.flv";
 
-	//private String ffmpeg_link = "rtmp://live:live@128.122.151.108:1935/live/test.flv";
-	private String ffmpeg_link = "rtmp://live:live@192.168.1.2:1935/live/test.flv";
+	private String ffmpeg_link = "rtmp://live:live@128.122.151.108:1935/live/test.flv";
+	//private String ffmpeg_link = "rtmp://live:live@192.168.1.2:1935/live/test.flv";
 	//private String ffmpeg_link = "rtmp://live:live@192.168.43.176:1935/live/test.flv";
 	
-	public volatile boolean recording = false;
+	boolean recording = false;
 	
 	private volatile MyFFmpegFrameRecorder recorder;
 	
@@ -67,10 +67,12 @@ public class MainActivity extends Activity implements OnClickListener {
 	private Thread audioThread;
 	volatile boolean runAudioThread = true;
 	
+	/*
 	private VideoRecordRunnable videoRecordRunnable;
 	private Thread videoThread;
 	volatile boolean runVideoThread = true;
-
+	*/
+	
 	/* video data getting thread */
 	private Camera cameraDevice;
 	private CameraView cameraView;
@@ -200,7 +202,7 @@ public class MainActivity extends Activity implements OnClickListener {
     	
 		Log.i(LOG_TAG, "ffmpeg_url: " + ffmpeg_link);
     	recorder = new MyFFmpegFrameRecorder(ffmpeg_link, imageWidth, imageHeight, 1);
-    	recorder.interleaved = false;
+    	//recorder.interleaved = false;
     	
 		recorder.setFormat("flv");
     	recorder.setAudioCodec(avcodec.AV_CODEC_ID_AAC);		
@@ -214,18 +216,19 @@ public class MainActivity extends Activity implements OnClickListener {
     	
 		audioRecordRunnable = new AudioRecordRunnable();
 		audioThread = new Thread(audioRecordRunnable);
-		audioThread.start();
+		//audioThread.start();
 		
-		videoRecordRunnable = new VideoRecordRunnable();
-		videoThread = new Thread(videoRecordRunnable);
+		//videoRecordRunnable = new VideoRecordRunnable();
+		//videoThread = new Thread(videoRecordRunnable);
 	}
 	
 	public void startRecording() {
-		videoThread.start();
+		//videoThread.start();
 		
 		try {
 			recorder.start();
 			recording = true;
+			audioThread.start();
 
 		} catch (Exception e) {
 			e.printStackTrace();
@@ -235,7 +238,7 @@ public class MainActivity extends Activity implements OnClickListener {
 	public void stopRecording() {
 		
 		runAudioThread = false;
-		runVideoThread = false;
+		//runVideoThread = false;
 		
 		if (recorder != null && recording) {
 			recording = false;
@@ -269,7 +272,7 @@ public class MainActivity extends Activity implements OnClickListener {
 	
 	
 
-    
+    /*
     class VideoRecordRunnable implements Runnable {
     	
     	long lastTime = System.currentTimeMillis();
@@ -301,6 +304,7 @@ public class MainActivity extends Activity implements OnClickListener {
     		}
     	}
     }
+    */
     
     
     //---------------------------------------------
@@ -330,43 +334,28 @@ public class MainActivity extends Activity implements OnClickListener {
 				
 			/* ffmpeg_audio encoding loop */
 			while (runAudioThread) {
-				
+				//Log.v(LOG_TAG,"recording? " + recording);
 				bufferReadResult = audioRecord.read(audioData, 0, audioData.length);
-				Log.v(LOG_TAG,"bufferReadResult: " + bufferReadResult);
-				//System.arraycopy(audioData, 0, copiedAudioData, 0, bufferReadResult);
-
-				if (recording && bufferReadResult > 0 && bufferReadResult < 1024 && recording) {
-					
-					//Buffer realAudioData = ShortBuffer.wrap(copiedAudioData,0,bufferReadResult);
-					Buffer realAudioData = ShortBuffer.wrap(audioData,0,bufferReadResult);
-					try {
-						recorder.record(realAudioData);
-					} catch (Exception e) {
-						Log.v(LOG_TAG,e.getMessage());
-						e.printStackTrace();
-					}
-				} else if (recording && bufferReadResult >= 1024) {
-					int times = bufferReadResult/1024;
-					
-					for (int i = 0; i < times; i++) {
-						//Buffer realAudioData =ShortBuffer.wrap(copiedAudioData, 1024*i, 1024*i+1024);
-						Buffer realAudioData =ShortBuffer.wrap(audioData, 1024*i, 1024*i+1024);
-						try {
-							recorder.record(realAudioData);
-						} catch (Exception e) {
-							Log.v(LOG_TAG,e.getMessage());
-							e.printStackTrace();
+				if (bufferReadResult > 0) {
+					Log.v(LOG_TAG,"bufferReadResult: " + bufferReadResult);
+					//System.arraycopy(audioData, 0, copiedAudioData, 0, bufferReadResult);
+					// If "recording" isn't true when start this thread, it never get's set according to this if statement...!!!
+					if (recording == true) {
+						int times = bufferReadResult/1024;
+						//Log.v(LOG_TAG,times + " 1024");
+						for (int i = 0; i < times; i++) {
+							//Buffer realAudioData =ShortBuffer.wrap(copiedAudioData, 1024*i, 1024*i+1024);
+							Buffer realAudioData =ShortBuffer.wrap(audioData, 1024*i, 1024*i+1024);
+							try {
+								recorder.record(realAudioData);
+								//Log.v(LOG_TAG,"recording " + 1024*i + " to " + 1024*i+1024);
+							} catch (Exception e) {
+								Log.v(LOG_TAG,e.getMessage());
+								e.printStackTrace();
+							}
 						}
 					}
-				} /*else if (bufferReadResult == 0) {
-					try {
-						Log.v(LOG_TAG,"Sleeping");
-						Thread.sleep(10);
-					} catch (InterruptedException e) {
-						// TODO Auto-generated catch block
-						e.printStackTrace();
-					}
-				}*/
+				}
 			}
 			Log.v(LOG_TAG,"AudioThread Finished, release audioRecord");
 				
@@ -441,20 +430,27 @@ public class MainActivity extends Activity implements OnClickListener {
         	}
         }
     	
+    	long lastTime = System.currentTimeMillis();
+    	long currentTime = System.currentTimeMillis();
+    	long minTime = 1000/frameRate;        
+        
     	@Override
     	public void onPreviewFrame(byte[] data, Camera camera) {
     		/* get video data */
 			if (yuvIplimage != null && recording) {
 				yuvIplimage.getByteBuffer().put(data);
-				/*
-		    	try {
-		    		//Log.v(LOG_TAG,"Recording Frame " + System.currentTimeMillis());
-					recorder.record(yuvIplimage);
-				} catch (Exception e) {
-					e.printStackTrace();
+				
+    			currentTime = System.currentTimeMillis();
+    			if (currentTime - lastTime >= minTime) {
+    				Log.v(LOG_TAG,"Writing Frame");
+    				try {
+    					recorder.record(yuvIplimage);
+    				} catch (Exception e) {
+    					Log.v(LOG_TAG,e.getMessage());
+    					e.printStackTrace();
+    				}
+    				lastTime = currentTime;
 				}
-				*/
-				//Log.i(LOG_TAG, "yuvIplimage put data");
 			}
 			
 			/*
