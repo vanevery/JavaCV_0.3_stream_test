@@ -273,7 +273,24 @@ public class MainActivity extends Activity implements OnClickListener {
 			
 			try {
 				camera.setPreviewDisplay(holder);
-				//camera.setPreviewCallback(this);
+				camera.setPreviewCallback(this);
+				
+				/*
+	            Camera.Parameters currentParams = camera.getParameters();
+	            Log.v(LOG_TAG,"Preview Framerate: " + currentParams.getPreviewFrameRate());
+	        	Log.v(LOG_TAG,"Preview imageWidth: " + currentParams.getPreviewSize().width + " imageHeight: " + currentParams.getPreviewSize().height);
+	        	
+	        	// Use these values
+	        	imageWidth = currentParams.getPreviewSize().width;
+	        	imageHeight = currentParams.getPreviewSize().height;
+	        	frameRate = currentParams.getPreviewFrameRate();				
+				
+				Log.v(LOG_TAG,"Creating previewBuffer size: " + imageWidth * imageHeight * ImageFormat.getBitsPerPixel(currentParams.getPreviewFormat())/8);
+	        	previewBuffer = new byte[imageWidth * imageHeight * ImageFormat.getBitsPerPixel(currentParams.getPreviewFormat())/8];
+				camera.addCallbackBuffer(previewBuffer);
+	            camera.setPreviewCallbackWithBuffer(this);
+	        	*/				
+				
 				camera.startPreview();
 				previewRunning = true;
 			}
@@ -319,11 +336,6 @@ public class MainActivity extends Activity implements OnClickListener {
         	imageWidth = currentParams.getPreviewSize().width;
         	imageHeight = currentParams.getPreviewSize().height;
         	frameRate = currentParams.getPreviewFrameRate();
-        	
-        	Log.v(LOG_TAG,"Creating previewBuffer size: " + imageWidth * imageHeight * ImageFormat.getBitsPerPixel(currentParams.getPreviewFormat())/8);
-        	previewBuffer = new byte[imageWidth * imageHeight * ImageFormat.getBitsPerPixel(currentParams.getPreviewFormat())/8];
-			camera.addCallbackBuffer(previewBuffer);
-            camera.setPreviewCallbackWithBuffer(this);
         	
         	// Create the yuvIplimage if needed
 			yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_8U, 2);            
