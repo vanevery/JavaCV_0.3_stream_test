@@ -3,7 +3,12 @@ package com.example.javacv.stream.test2;
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
+import android.graphics.Bitmap;
+import android.graphics.Canvas;
+import android.graphics.Color;
 import android.graphics.ImageFormat;
+import android.graphics.Paint;
+import android.graphics.RectF;
 import android.hardware.Camera;
 import android.hardware.Camera.PreviewCallback;
 import android.media.AudioFormat;
@@ -118,6 +123,8 @@ public class MainActivity extends Activity implements OnClickListener {
         if (yuvIplimage == null) {
         	// Recreated after frame size is set in surface change method
             yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_8U, 2);
+        	//yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_32S, 2);
+
             Log.v(LOG_TAG, "IplImage.create");
         }
 
@@ -258,7 +265,12 @@ public class MainActivity extends Activity implements OnClickListener {
         private Camera camera;
         
         private byte[] previewBuffer;
+        
+        long videoTimestamp = 0;
 
+        Bitmap bitmap;
+        Canvas canvas;
+        
         public CameraView(Context _context) {
             super(_context);
             
@@ -275,7 +287,6 @@ public class MainActivity extends Activity implements OnClickListener {
 				camera.setPreviewDisplay(holder);
 				camera.setPreviewCallback(this);
 				
-				/*
 	            Camera.Parameters currentParams = camera.getParameters();
 	            Log.v(LOG_TAG,"Preview Framerate: " + currentParams.getPreviewFrameRate());
 	        	Log.v(LOG_TAG,"Preview imageWidth: " + currentParams.getPreviewSize().width + " imageHeight: " + currentParams.getPreviewSize().height);
@@ -285,6 +296,10 @@ public class MainActivity extends Activity implements OnClickListener {
 	        	imageHeight = currentParams.getPreviewSize().height;
 	        	frameRate = currentParams.getPreviewFrameRate();				
 				
+	        	bitmap = Bitmap.createBitmap(imageWidth, imageHeight, Bitmap.Config.ALPHA_8);
+	    		
+	        	
+	        	/*
 				Log.v(LOG_TAG,"Creating previewBuffer size: " + imageWidth * imageHeight * ImageFormat.getBitsPerPixel(currentParams.getPreviewFormat())/8);
 	        	previewBuffer = new byte[imageWidth * imageHeight * ImageFormat.getBitsPerPixel(currentParams.getPreviewFormat())/8];
 				camera.addCallbackBuffer(previewBuffer);
@@ -338,7 +353,8 @@ public class MainActivity extends Activity implements OnClickListener {
         	frameRate = currentParams.getPreviewFrameRate();
         	
         	// Create the yuvIplimage if needed
-			yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_8U, 2);            
+			yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_8U, 2);
+        	//yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_32S, 2);
         }
 
         @Override
@@ -359,7 +375,8 @@ public class MainActivity extends Activity implements OnClickListener {
         public void onPreviewFrame(byte[] data, Camera camera) {
             
             if (yuvIplimage != null && recording) {
-            	
+            	videoTimestamp = 1000 * (System.currentTimeMillis() - startTime);
+
             	// Put the camera preview frame right into the yuvIplimage object
             	yuvIplimage.getByteBuffer().put(data);
                 
@@ -369,15 +386,34 @@ public class MainActivity extends Activity implements OnClickListener {
                 //   also use that Buffer with Bitmap.copyPixelsFromBuffer() and copyPixelsToBuffer().
                 // - To get a BufferedImage from an IplImage, we may call getBufferedImage().
                 // - The createFrom() factory method can construct an IplImage from a BufferedImage.
-                // - There are also a few copy*() methods for BufferedImage<->IplImage data transfers. 
-
-                
+                // - There are also a few copy*() methods for BufferedImage<->IplImage data transfers.
+            	
+            	// Let's try it..
+            	// This works but only on transparency
+            	// Need to find the right Bitmap and IplImage matching types
+            	
+            	/*
+            	bitmap.copyPixelsFromBuffer(yuvIplimage.getByteBuffer());
+            	//bitmap.setPixel(10,10,Color.MAGENTA);
+            	
+            	canvas = new Canvas(bitmap);
+            	Paint paint = new Paint(); 
+            	paint.setColor(Color.GREEN);
+            	float leftx = 20; 
+            	float topy = 20; 
+            	float rightx = 50; 
+            	float bottomy = 100; 
+            	RectF rectangle = new RectF(leftx,topy,rightx,bottomy); 
+            	canvas.drawRect(rectangle, paint);
+       		 
+            	bitmap.copyPixelsToBuffer(yuvIplimage.getByteBuffer());
+                */
                 //Log.v(LOG_TAG,"Writing Frame");
                 
                 try {
                 	
                 	// Get the correct time
-                    recorder.setTimestamp(1000 * (System.currentTimeMillis() - startTime));
+                    recorder.setTimestamp(videoTimestamp);
                     
                     // Record the image into FFmpegFrameRecorder
                     recorder.record(yuvIplimage);
