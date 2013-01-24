@@ -1,21 +1,9 @@
 package com.example.javacv.stream.test2;
 
-import static com.googlecode.javacv.cpp.avutil.*;
-import static com.googlecode.javacv.cpp.opencv_core.*;
-import static com.googlecode.javacv.cpp.opencv_core.IplImage;
-
-//import com.googlecode.javacv.FFmpegFrameRecorder;
-//import com.googlecode.javacv.FrameRecorder.Exception;
-import com.googlecode.javacv.cpp.avcodec;
-
-import java.io.IOException;
-import java.nio.Buffer;
-import java.nio.ByteBuffer;
-import java.nio.ShortBuffer;
-
 import android.app.Activity;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
+import android.graphics.ImageFormat;
 import android.hardware.Camera;
 import android.hardware.Camera.PreviewCallback;
 import android.media.AudioFormat;
@@ -24,455 +12,369 @@ import android.media.MediaRecorder;
 import android.os.Bundle;
 import android.os.PowerManager;
 import android.util.Log;
-import android.view.Display;
 import android.view.KeyEvent;
-import android.view.LayoutInflater;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
 import android.view.View.OnClickListener;
-import android.view.WindowManager;
 import android.widget.Button;
 import android.widget.LinearLayout;
-import android.widget.RelativeLayout;
-import android.widget.Toast;
+
+import java.io.IOException;
+import java.nio.ShortBuffer;
+
+import com.googlecode.javacv.FFmpegFrameRecorder;
+import com.googlecode.javacv.cpp.opencv_core.IplImage;
+
+import static com.googlecode.javacv.cpp.opencv_core.*;
 
 public class MainActivity extends Activity implements OnClickListener {
 	
-	private final static String CLASS_LABEL = "RecordActivity";
-	private final static String LOG_TAG = CLASS_LABEL;
-	
-	private PowerManager.WakeLock mWakeLock;
-    
-	private String ffmpeg_link = "/mnt/sdcard/stream.flv";
+    private final static String LOG_TAG = "MainActivity";
 
-	//private String ffmpeg_link = "rtmp://live:live@128.122.151.108:1935/live/test.flv";
-	//private String ffmpeg_link = "rtmp://live:live@192.168.1.2:1935/live/test.flv";
-	//private String ffmpeg_link = "rtmp://live:live@192.168.43.176:1935/live/test.flv";
+    private PowerManager.WakeLock mWakeLock;
+
+	private String ffmpeg_link = "rtmp://live:live@128.122.151.108:1935/live/test.flv";
+    //private String ffmpeg_link = "/mnt/sdcard/new_stream.flv";
 	
-	boolean recording = false;
-	
-	private volatile MyFFmpegFrameRecorder recorder;
-	
-    private boolean isPreviewOn = false;
-    
+    private volatile FFmpegFrameRecorder recorder;
+    boolean recording = false;
+    long startTime = 0;
+
     private int sampleAudioRateInHz = 44100;
-    private int imageWidth = 176;
-    private int imageHeight = 144;
-    private int frameRate = 5;
-        	
-    /* audio data getting thread */
-	private AudioRecord audioRecord;
-	private AudioRecordRunnable audioRecordRunnable;
-	private Thread audioThread;
-	volatile boolean runAudioThread = true;
-	
-	/*
-	private VideoRecordRunnable videoRecordRunnable;
-	private Thread videoThread;
-	volatile boolean runVideoThread = true;
-	*/
-	
-	/* video data getting thread */
-	private Camera cameraDevice;
-	private CameraView cameraView;
-	
-	private IplImage yuvIplimage = null;
-	
-	/* layout setting */
-	private final int bg_screen_bx = 232;
-	private final int bg_screen_by = 128;
-	private final int bg_screen_width = 700;
-	private final int bg_screen_height = 500;
-	private final int bg_width = 1123;
-	private final int bg_height = 715;
-	private final int live_width = 640;
-	private final int live_height = 480;
-	private int screenWidth, screenHeight;
-	private Button btnRecorderControl;
-	
-	@Override
+    private int imageWidth = 320;
+    private int imageHeight = 240;
+    private int frameRate = 30;
+
+    private Thread audioThread;
+    volatile boolean runAudioThread = true;
+    private AudioRecord audioRecord;
+    private AudioRecordRunnable audioRecordRunnable;
+
+    private CameraView cameraView;
+    private IplImage yuvIplimage = null;
+    
+    private Button recordButton;
+    private LinearLayout mainLayout;
+    
+    @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
-		setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
-
+        
+        setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         setContentView(R.layout.activity_main);
 
-        PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE); 
-        mWakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, CLASS_LABEL); 
-        mWakeLock.acquire(); 
-        
         initLayout();
         initRecorder();
     }
-    
 
-	@Override
-	protected void onResume() {
-		super.onResume();
-		
-		if (mWakeLock == null) {
-		   PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE);
-		   mWakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, CLASS_LABEL);
-		   mWakeLock.acquire();
-		}
-	}
+    @Override
+    protected void onResume() {
+        super.onResume();
 
-	@Override
-	protected void onPause() {
-		super.onPause();
-		
-		if (mWakeLock != null) {
-			mWakeLock.release();
-			mWakeLock = null;
-		}
-	}
-    
-	@Override
-	protected void onDestroy() {
-		super.onDestroy();
-		
-		recording = false;
-				
-		if (cameraView != null) {
-			cameraView.stopPreview();		
-			cameraDevice.release();
-			cameraDevice = null;
-		}
-		
-		if (mWakeLock != null) {
-			mWakeLock.release();
-			mWakeLock = null;
-		}
-	}
-	
-	
-	private void initLayout() {
-		
-		/* get size of screen */
-		Display display = ((WindowManager) getSystemService(Context.WINDOW_SERVICE)).getDefaultDisplay();
-		screenWidth = display.getWidth();
-		screenHeight = display.getHeight();
-		RelativeLayout.LayoutParams layoutParam = null; 
-		LayoutInflater myInflate = null; 
-		myInflate = (LayoutInflater) getSystemService(Context.LAYOUT_INFLATER_SERVICE);
-		RelativeLayout topLayout = new RelativeLayout(this);
-		setContentView(topLayout);
-		LinearLayout preViewLayout = (LinearLayout) myInflate.inflate(R.layout.activity_main, null);
-		layoutParam = new RelativeLayout.LayoutParams(screenWidth, screenHeight);
-		topLayout.addView(preViewLayout, layoutParam);
-		
-		/* add control button: start and stop */
-		btnRecorderControl = (Button) findViewById(R.id.recorder_control);
-		btnRecorderControl.setOnClickListener(this);
-		
-		/* add camera view */
-		int display_width_d = (int) (1.0 * bg_screen_width * screenWidth / bg_width);
-		int display_height_d = (int) (1.0 * bg_screen_height * screenHeight / bg_height);
-		int prev_rw, prev_rh;
-		if (1.0 * display_width_d / display_height_d > 1.0 * live_width / live_height) {
-			prev_rh = display_height_d;
-			prev_rw = (int) (1.0 * display_height_d * live_width / live_height);
-		} else {
-			prev_rw = display_width_d;
-			prev_rh = (int) (1.0 * display_width_d * live_height / live_width);
-		}
-		layoutParam = new RelativeLayout.LayoutParams(prev_rw, prev_rh);
-		layoutParam.topMargin = (int) (1.0 * bg_screen_by * screenHeight / bg_height);
-		layoutParam.leftMargin = (int) (1.0 * bg_screen_bx * screenWidth / bg_width);
-		
-		cameraDevice = Camera.open();
-		Log.i(LOG_TAG, "cameara open");
-    	cameraView = new CameraView(this, cameraDevice);
-		topLayout.addView(cameraView, layoutParam);
-        Log.i(LOG_TAG, "cameara preview start: OK");
-	}
-	
-	//---------------------------------------
-	// initialize ffmpeg_recorder
-	//---------------------------------------
+        if (mWakeLock == null) {
+            PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE); 
+            mWakeLock = pm.newWakeLock(PowerManager.SCREEN_BRIGHT_WAKE_LOCK, LOG_TAG); 
+            mWakeLock.acquire(); 
+        }
+    }
+
+    @Override
+    protected void onPause() {
+        super.onPause();
+
+        if (mWakeLock != null) {
+            mWakeLock.release();
+            mWakeLock = null;
+        }
+    }
+
+    @Override
+    protected void onDestroy() {
+        super.onDestroy();
+
+        recording = false;
+    }
+
+
+    private void initLayout() {
+
+        mainLayout = (LinearLayout) this.findViewById(R.id.record_layout);
+
+        recordButton = (Button) findViewById(R.id.recorder_control);
+        recordButton.setText("Start");
+        recordButton.setOnClickListener(this);
+
+        cameraView = new CameraView(this);
+        
+        LinearLayout.LayoutParams layoutParam = new LinearLayout.LayoutParams(imageWidth, imageHeight);        
+        mainLayout.addView(cameraView, layoutParam);
+        Log.v(LOG_TAG, "added cameraView to mainLayout");
+    }
+
     private void initRecorder() {
-    	
-    	Log.w(LOG_TAG,"init recorder");
+        Log.w(LOG_TAG,"initRecorder");
 
-		if (yuvIplimage == null) {
-			yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_8U, 2);
-			Log.i(LOG_TAG, "create yuvIplimage");
-		}
-    	
-		Log.i(LOG_TAG, "ffmpeg_url: " + ffmpeg_link);
-    	recorder = new MyFFmpegFrameRecorder(ffmpeg_link, imageWidth, imageHeight, 1);
-    	//recorder.interleaved = false;
-    	
-		recorder.setFormat("flv");
-    	recorder.setAudioCodec(avcodec.AV_CODEC_ID_AAC);		
-		recorder.setSampleRate(sampleAudioRateInHz);
-		recorder.setVideoCodec(avcodec.AV_CODEC_ID_FLV1);
-		// Set in the surface changed method
-		recorder.setFrameRate(frameRate);
-		recorder.setPixelFormat(PIX_FMT_YUV420P);
+        if (yuvIplimage == null) {
+        	// Recreated after frame size is set in surface change method
+            yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_8U, 2);
+            Log.v(LOG_TAG, "IplImage.create");
+        }
 
-		Log.i(LOG_TAG, "recorder initialize success");
-    	
-		audioRecordRunnable = new AudioRecordRunnable();
-		audioThread = new Thread(audioRecordRunnable);
-		//audioThread.start();
-		
-		//videoRecordRunnable = new VideoRecordRunnable();
-		//videoThread = new Thread(videoRecordRunnable);
-	}
-	
-	public void startRecording() {
-		//videoThread.start();
-		
-		try {
-			recorder.start();
-			recording = true;
-			audioThread.start();
+        recorder = new FFmpegFrameRecorder(ffmpeg_link, imageWidth, imageHeight, 1);
+        Log.v(LOG_TAG, "FFmpegFrameRecorder: " + ffmpeg_link + " imageWidth: " + imageWidth + " imageHeight " + imageHeight);
 
-		} catch (Exception e) {
-			e.printStackTrace();
-		}
-	}
-	
-	public void stopRecording() {
-		
-		runAudioThread = false;
-		//runVideoThread = false;
-		
-		if (recorder != null && recording) {
-			recording = false;
-			Log.v(LOG_TAG,"Finishing recording, calling stop and release on recorder");
-			try {
-				recorder.stop();
-				recorder.release();
-			} catch (Exception e) {
-				e.printStackTrace();
-			}
-			recorder = null;
-			
-		}
-	}
-		
-	@Override
-	public boolean onKeyDown(int keyCode, KeyEvent event) {
-		
-		if (keyCode == KeyEvent.KEYCODE_BACK) {
-			if (recording) {
-				stopRecording();
-			}
-			
-			finish();
-			
-			return true;
-		}
-		
-		return super.onKeyDown(keyCode, event);
-	}
-	
-	
+        recorder.setFormat("flv");
+        Log.v(LOG_TAG, "recorder.setFormat(\"flv\")");
+        
+        recorder.setSampleRate(sampleAudioRateInHz);
+        Log.v(LOG_TAG, "recorder.setSampleRate(sampleAudioRateInHz)");
 
-    /*
-    class VideoRecordRunnable implements Runnable {
-    	
-    	long lastTime = System.currentTimeMillis();
-    	long currentTime = System.currentTimeMillis();
-    	long minTime = 1000/frameRate;
-    	
-    	public void run() {
-    		while (runVideoThread) {
-    			if (recording && yuvIplimage != null) {
-	    			currentTime = System.currentTimeMillis();
-	    			if (currentTime - lastTime >= minTime) {
-	    				Log.v(LOG_TAG,"Writing Frame");
-	    				try {
-	    					recorder.record(yuvIplimage);
-	    				} catch (Exception e) {
-	    					Log.v(LOG_TAG,e.getMessage());
-	    					e.printStackTrace();
-	    				}
-	    				lastTime = currentTime;
-					}
-    			}
-    			
-    			// Let's give a chance to the other things
-    			try {
-    				Thread.sleep(minTime/2);
-    			} catch (Exception e) {
-    				e.printStackTrace();
-    			}
-    		}
-    	}
+        // re-set in the surface changed method as well
+        recorder.setFrameRate(frameRate);
+        Log.v(LOG_TAG, "recorder.setFrameRate(frameRate)");
+
+        // Create audio recording thread
+        audioRecordRunnable = new AudioRecordRunnable();
+        audioThread = new Thread(audioRecordRunnable);
     }
-    */
-    
-    
-    //---------------------------------------------
-	// audio thread, gets and encodes audio data
-	//---------------------------------------------
-	class AudioRecordRunnable implements Runnable {
 
-		@Override
-		public void run() {
-			
-			// Audio
-			int bufferSize;
-			short[] audioData, copiedAudioData;
-			int bufferReadResult;
-			
-			int minBufferSize = AudioRecord.getMinBufferSize(sampleAudioRateInHz, 
-					AudioFormat.CHANNEL_CONFIGURATION_MONO, AudioFormat.ENCODING_PCM_16BIT);
-			bufferSize = minBufferSize;				
-			audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC, sampleAudioRateInHz, 
-					AudioFormat.CHANNEL_CONFIGURATION_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize);
+    // Start the capture
+    public void startRecording() {
+        try {
+            recorder.start();
+            startTime = System.currentTimeMillis();
+            recording = true;
+            audioThread.start();
+        } catch (FFmpegFrameRecorder.Exception e) {
+            e.printStackTrace();
+        }
+    }
 
-			audioData = new short[bufferSize];
-			//copiedAudioData = new short[bufferSize];
-			
-			Log.d(LOG_TAG, "audioRecord.startRecording()");
-			audioRecord.startRecording();
-				
-			/* ffmpeg_audio encoding loop */
-			while (runAudioThread) {
-				//Log.v(LOG_TAG,"recording? " + recording);
-				bufferReadResult = audioRecord.read(audioData, 0, audioData.length);
-				if (bufferReadResult > 0) {
-					Log.v(LOG_TAG,"bufferReadResult: " + bufferReadResult);
-					//System.arraycopy(audioData, 0, copiedAudioData, 0, bufferReadResult);
-					// If "recording" isn't true when start this thread, it never get's set according to this if statement...!!!
-					if (recording == true) {
-						int times = bufferReadResult/1024;
-						//Log.v(LOG_TAG,times + " 1024");
-						for (int i = 0; i < times; i++) {
-							//Buffer realAudioData =ShortBuffer.wrap(copiedAudioData, 1024*i, 1024*i+1024);
-							Buffer realAudioData =ShortBuffer.wrap(audioData, 1024*i, 1024*i+1024);
-							try {
-								recorder.record(realAudioData);
-								//Log.v(LOG_TAG,"recording " + 1024*i + " to " + 1024*i+1024);
-							} catch (Exception e) {
-								Log.v(LOG_TAG,e.getMessage());
-								e.printStackTrace();
-							}
-						}
-					}
-				}
-			}
-			Log.v(LOG_TAG,"AudioThread Finished, release audioRecord");
-				
-			/* encoding finish, release recorder */
-			if (audioRecord != null) {
-				audioRecord.stop();
-				audioRecord.release();
-				audioRecord = null;
-				Log.v(LOG_TAG,"audioRecord released");
-			}
-		}
-	}
-	
-    //---------------------------------------------
-	// camera thread, gets and encodes video data
-	//---------------------------------------------
-    class CameraView extends SurfaceView implements SurfaceHolder.Callback, PreviewCallback {
-    	
-    	private SurfaceHolder mHolder;
-    	private Camera mCamera;
-		
-    	public CameraView(Context context, Camera camera) {
-    		super(context);
-    		Log.w("camera","camera view");
-    		mCamera = camera;
-            mHolder = getHolder();
-            mHolder.addCallback(CameraView.this);
-            mHolder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
-        	mCamera.setPreviewCallback(CameraView.this);
-    	}
+    public void stopRecording() {
+    	// This should stop the audio thread from running
+    	runAudioThread = false;
 
-    	@Override
-    	public void surfaceCreated(SurfaceHolder holder) {
+        if (recorder != null && recording) {
+            recording = false;
+            Log.v(LOG_TAG,"Finishing recording, calling stop and release on recorder");
             try {
-            	stopPreview();
-            	mCamera.setPreviewDisplay(holder);
-            } catch (IOException exception) {
-                mCamera.release();
-                mCamera = null;
+                recorder.stop();
+                recorder.release();
+            } catch (FFmpegFrameRecorder.Exception e) {
+                e.printStackTrace();
             }
-    	}
-
-    	public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
-    		Log.v(LOG_TAG,"Setting imageWidth: " + imageWidth + " imageHeight: " + imageHeight + " frameRate: " + frameRate);
-            Camera.Parameters camParams = mCamera.getParameters();
-        	camParams.setPreviewSize(imageWidth, imageHeight);
-        	
-        	Log.v(LOG_TAG,"Preview Framerate: " + camParams.getPreviewFrameRate());
-        	
-        	camParams.setPreviewFrameRate(frameRate);
-            mCamera.setParameters(camParams);
-            startPreview();    	
-    	}
-
-    	@Override
-    	public void surfaceDestroyed(SurfaceHolder holder) {
-    		mHolder.addCallback(null);
-    		mCamera.setPreviewCallback(null);
-    	}
-    	
-        public void startPreview() {
-            if (!isPreviewOn && mCamera != null) {
-        		isPreviewOn = true;
-    	    	mCamera.startPreview();
-        	}
+            recorder = null;
         }
-        
-        public void stopPreview() {
-            if (isPreviewOn && mCamera != null) {
-    	    	isPreviewOn = false;
-    	    	mCamera.stopPreview();
-        	}
-        }
-    	
-    	long lastTime = System.currentTimeMillis();
-    	long currentTime = System.currentTimeMillis();
-    	long minTime = 1000/frameRate;        
-        
-    	@Override
-    	public void onPreviewFrame(byte[] data, Camera camera) {
-    		/* get video data */
-			if (yuvIplimage != null && recording) {
-				yuvIplimage.getByteBuffer().put(data);
-				
-    			currentTime = System.currentTimeMillis();
-    			if (currentTime - lastTime >= minTime) {
-    				Log.v(LOG_TAG,"Writing Frame");
-    				try {
-    					recorder.record(yuvIplimage);
-    				} catch (Exception e) {
-    					Log.v(LOG_TAG,e.getMessage());
-    					e.printStackTrace();
-    				}
-    				lastTime = currentTime;
-				}
-			}
-			
-			/*
-			Log.i(LOG_TAG, "onPreviewFrame - wrote bytes: " + data.length + "; " + 
-					camera.getParameters().getPreviewSize().width +" x " + 
-					camera.getParameters().getPreviewSize().height + "; frameRate: " +
-					camera.getParameters().getPreviewFrameRate());
-			*/
-    	}
     }
 
-	@Override
-	public void onClick(View v) {
-		if (!recording) {
-			startRecording();
-			Log.w(LOG_TAG, "Start Button Pushed");
-	    	btnRecorderControl.setText("stop");
-		} else {
-			// This will trigger the audio recording loop to stop and then set isRecorderStart = false;
-			stopRecording();
-			Log.w(LOG_TAG, "Stop Button Pushed");
-			btnRecorderControl.setText("start");
-		}		
-	}
+    @Override
+    public boolean onKeyDown(int keyCode, KeyEvent event) {
+    	// Quit when back button is pushed
+        if (keyCode == KeyEvent.KEYCODE_BACK) {
+            if (recording) {
+                stopRecording();
+            }
+            finish();
+            return true;
+        }
+        return super.onKeyDown(keyCode, event);
+    }
+
+    @Override
+    public void onClick(View v) {
+        if (!recording) {
+            startRecording();
+            Log.w(LOG_TAG, "Start Button Pushed");
+            recordButton.setText("Stop");
+        } else {
+            stopRecording();
+            Log.w(LOG_TAG, "Stop Button Pushed");
+            recordButton.setText("Start");
+        }
+    }
+    
+    //---------------------------------------------
+    // audio thread, gets and encodes audio data
+    //---------------------------------------------
+    class AudioRecordRunnable implements Runnable {
+
+        @Override
+        public void run() {
+        	// Set the thread priority
+            android.os.Process.setThreadPriority(android.os.Process.THREAD_PRIORITY_URGENT_AUDIO);
+
+            // Audio
+            int bufferSize;
+            short[] audioData;
+            int bufferReadResult;
+
+            bufferSize = AudioRecord.getMinBufferSize(sampleAudioRateInHz, 
+                    AudioFormat.CHANNEL_CONFIGURATION_MONO, AudioFormat.ENCODING_PCM_16BIT);
+            audioRecord = new AudioRecord(MediaRecorder.AudioSource.MIC, sampleAudioRateInHz, 
+                    AudioFormat.CHANNEL_CONFIGURATION_MONO, AudioFormat.ENCODING_PCM_16BIT, bufferSize);
+
+            audioData = new short[bufferSize];
+
+            Log.d(LOG_TAG, "audioRecord.startRecording()");
+            audioRecord.startRecording();
+
+            // Audio Capture/Encoding Loop
+            while (runAudioThread) {
+            	// Read from audioRecord
+                bufferReadResult = audioRecord.read(audioData, 0, audioData.length);
+                if (bufferReadResult > 0) {
+                    //Log.v(LOG_TAG,"audioRecord bufferReadResult: " + bufferReadResult);
+                	
+                    // Changes in this variable may not be picked up despite it being "volatile"
+                    if (recording) {
+                        try {
+                        	// Write to FFmpegFrameRecorder
+                            recorder.record(ShortBuffer.wrap(audioData, 0, bufferReadResult));
+                        } catch (FFmpegFrameRecorder.Exception e) {
+                            Log.v(LOG_TAG,e.getMessage());
+                            e.printStackTrace();
+                        }
+                    }
+                }
+            }
+            Log.v(LOG_TAG,"AudioThread Finished");
+
+            /* Capture/Encoding finished, release recorder */
+            if (audioRecord != null) {
+                audioRecord.stop();
+                audioRecord.release();
+                audioRecord = null;
+                Log.v(LOG_TAG,"audioRecord released");
+            }
+        }
+    }
+
+    class CameraView extends SurfaceView implements SurfaceHolder.Callback, PreviewCallback {
+
+    	private boolean previewRunning = false;
+    	
+        private SurfaceHolder holder;
+        private Camera camera;
+        
+        private byte[] previewBuffer;
+
+        public CameraView(Context _context) {
+            super(_context);
+            
+            holder = this.getHolder();
+            holder.addCallback(this);
+            holder.setType(SurfaceHolder.SURFACE_TYPE_PUSH_BUFFERS);
+        }
+
+        @Override
+        public void surfaceCreated(SurfaceHolder holder) {
+			camera = Camera.open();
+			
+			try {
+				camera.setPreviewDisplay(holder);
+				//camera.setPreviewCallback(this);
+				camera.startPreview();
+				previewRunning = true;
+			}
+			catch (IOException e) {
+				Log.v(LOG_TAG,e.getMessage());
+				e.printStackTrace();
+			}	
+        }
+
+        public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
+            Log.v(LOG_TAG,"Surface Changed: width " + width + " height: " + height);
+
+            // We would do this if we want to reset the camera parameters
+            /*
+            if (!recording) {
+    			if (previewRunning){
+    				camera.stopPreview();
+    			}
+
+    			try {
+    				//Camera.Parameters cameraParameters = camera.getParameters();
+    				//p.setPreviewSize(imageWidth, imageHeight);
+    			    //p.setPreviewFrameRate(frameRate);
+    				//camera.setParameters(cameraParameters);
+    				
+    				camera.setPreviewDisplay(holder);
+    				camera.startPreview();
+    				previewRunning = true;
+    			}
+    			catch (IOException e) {
+    				Log.e(LOG_TAG,e.getMessage());
+    				e.printStackTrace();
+    			}	
+    		}            
+            */
+            
+            // Get the current parameters
+            Camera.Parameters currentParams = camera.getParameters();
+            Log.v(LOG_TAG,"Preview Framerate: " + currentParams.getPreviewFrameRate());
+        	Log.v(LOG_TAG,"Preview imageWidth: " + currentParams.getPreviewSize().width + " imageHeight: " + currentParams.getPreviewSize().height);
+        	
+        	// Use these values
+        	imageWidth = currentParams.getPreviewSize().width;
+        	imageHeight = currentParams.getPreviewSize().height;
+        	frameRate = currentParams.getPreviewFrameRate();
+        	
+        	Log.v(LOG_TAG,"Creating previewBuffer size: " + imageWidth * imageHeight * ImageFormat.getBitsPerPixel(currentParams.getPreviewFormat())/8);
+        	previewBuffer = new byte[imageWidth * imageHeight * ImageFormat.getBitsPerPixel(currentParams.getPreviewFormat())/8];
+			camera.addCallbackBuffer(previewBuffer);
+            camera.setPreviewCallbackWithBuffer(this);
+        	
+        	// Create the yuvIplimage if needed
+			yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_8U, 2);            
+        }
+
+        @Override
+        public void surfaceDestroyed(SurfaceHolder holder) {
+            try {
+                camera.setPreviewCallback(null);
+                
+    			previewRunning = false;
+    			camera.release();
+                
+            } catch (RuntimeException e) {
+            	Log.v(LOG_TAG,e.getMessage());
+            	e.printStackTrace();
+            }
+        }
+
+        @Override
+        public void onPreviewFrame(byte[] data, Camera camera) {
+            
+            if (yuvIplimage != null && recording) {
+            	
+            	// Put the camera preview frame right into the yuvIplimage object
+            	yuvIplimage.getByteBuffer().put(data);
+                
+                // FAQ about IplImage:
+                // - For custom raw processing of data, getByteBuffer() returns an NIO direct
+                //   buffer wrapped around the memory pointed by imageData, and under Android we can
+                //   also use that Buffer with Bitmap.copyPixelsFromBuffer() and copyPixelsToBuffer().
+                // - To get a BufferedImage from an IplImage, we may call getBufferedImage().
+                // - The createFrom() factory method can construct an IplImage from a BufferedImage.
+                // - There are also a few copy*() methods for BufferedImage<->IplImage data transfers. 
+
+                
+                //Log.v(LOG_TAG,"Writing Frame");
+                
+                try {
+                	
+                	// Get the correct time
+                    recorder.setTimestamp(1000 * (System.currentTimeMillis() - startTime));
+                    
+                    // Record the image into FFmpegFrameRecorder
+                    recorder.record(yuvIplimage);
+                    
+                } catch (FFmpegFrameRecorder.Exception e) {
+                    Log.v(LOG_TAG,e.getMessage());
+                    e.printStackTrace();
+                }
+            }
+        }
+    }
 }
