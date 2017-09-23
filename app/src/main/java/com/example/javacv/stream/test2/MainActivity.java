@@ -1,47 +1,40 @@
 package com.example.javacv.stream.test2;
 
-import android.app.Activity;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
 import android.graphics.Canvas;
-import android.graphics.Color;
-import android.graphics.ImageFormat;
-import android.graphics.Paint;
-import android.graphics.RectF;
 import android.hardware.Camera;
-import android.hardware.Camera.PreviewCallback;
 import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
-import android.os.Bundle;
 import android.os.Environment;
 import android.os.PowerManager;
+import android.support.v7.app.AppCompatActivity;
+import android.os.Bundle;
 import android.util.Log;
 import android.view.KeyEvent;
 import android.view.SurfaceHolder;
 import android.view.SurfaceView;
 import android.view.View;
-import android.view.View.OnClickListener;
 import android.widget.Button;
 import android.widget.LinearLayout;
 
+import org.bytedeco.javacv.FFmpegFrameRecorder;
+import org.bytedeco.javacv.Frame;
+
 import java.io.IOException;
+import java.nio.ByteBuffer;
 import java.nio.ShortBuffer;
 
-import com.googlecode.javacv.FFmpegFrameRecorder;
-import com.googlecode.javacv.cpp.opencv_core.IplImage;
+public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
-import static com.googlecode.javacv.cpp.opencv_core.*;
-
-public class MainActivity extends Activity implements OnClickListener {
-	
     private final static String LOG_TAG = "MainActivity";
 
     private PowerManager.WakeLock mWakeLock;
 
-	//private String ffmpeg_link = "rtmp://live:live@128.122.151.108:1935/live/test.flv";
-    private String ffmpeg_link = Environment.getExternalStorageDirectory() + "/new_stream.flv";
+    //private String ffmpeg_link = "rtmp://live:live@128.122.151.108:1935/live/test.flv";
+    private String ffmpeg_link = Environment.getExternalStorageDirectory() + "/test.flv";
 	
     private volatile FFmpegFrameRecorder recorder;
     boolean recording = false;
@@ -58,11 +51,12 @@ public class MainActivity extends Activity implements OnClickListener {
     private AudioRecordRunnable audioRecordRunnable;
 
     private CameraView cameraView;
-    private IplImage yuvIplimage = null;
-    
+    //private IplImage yuvIplimage = null;
+    private Frame yuvImage;
+
     private Button recordButton;
     private LinearLayout mainLayout;
-    
+
     @Override
     public void onCreate(Bundle savedInstanceState) {
         super.onCreate(savedInstanceState);
@@ -71,7 +65,6 @@ public class MainActivity extends Activity implements OnClickListener {
         setContentView(R.layout.activity_main);
 
         initLayout();
-        initRecorder();
     }
 
     @Override
@@ -112,8 +105,8 @@ public class MainActivity extends Activity implements OnClickListener {
         recordButton.setOnClickListener(this);
 
         cameraView = new CameraView(this);
-        
-        LinearLayout.LayoutParams layoutParam = new LinearLayout.LayoutParams(imageWidth, imageHeight);        
+
+        LinearLayout.LayoutParams layoutParam = new LinearLayout.LayoutParams(LinearLayout.LayoutParams.MATCH_PARENT, LinearLayout.LayoutParams.MATCH_PARENT);
         mainLayout.addView(cameraView, layoutParam);
         Log.v(LOG_TAG, "added cameraView to mainLayout");
     }
@@ -121,20 +114,18 @@ public class MainActivity extends Activity implements OnClickListener {
     private void initRecorder() {
         Log.w(LOG_TAG,"initRecorder");
 
-        if (yuvIplimage == null) {
-        	// Recreated after frame size is set in surface change method
-            yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_8U, 2);
-        	//yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_32S, 2);
 
-            Log.v(LOG_TAG, "IplImage.create");
-        }
+        // region
+        yuvImage = new Frame(imageWidth, imageHeight, Frame.DEPTH_UBYTE, 2);
+        Log.d(LOG_TAG, "IplImage.create");
+        // endregion
 
         recorder = new FFmpegFrameRecorder(ffmpeg_link, imageWidth, imageHeight, 1);
         Log.v(LOG_TAG, "FFmpegFrameRecorder: " + ffmpeg_link + " imageWidth: " + imageWidth + " imageHeight " + imageHeight);
 
         recorder.setFormat("flv");
         Log.v(LOG_TAG, "recorder.setFormat(\"flv\")");
-        
+
         recorder.setSampleRate(sampleAudioRateInHz);
         Log.v(LOG_TAG, "recorder.setSampleRate(sampleAudioRateInHz)");
 
@@ -148,7 +139,9 @@ public class MainActivity extends Activity implements OnClickListener {
     }
 
     // Start the capture
-    public void startRecording() {
+    public void startRecord() {
+        initRecorder();
+
         try {
             recorder.start();
             startTime = System.currentTimeMillis();
@@ -159,7 +152,7 @@ public class MainActivity extends Activity implements OnClickListener {
         }
     }
 
-    public void stopRecording() {
+    public void stopRecord() {
     	// This should stop the audio thread from running
     	runAudioThread = false;
 
@@ -181,7 +174,7 @@ public class MainActivity extends Activity implements OnClickListener {
     	// Quit when back button is pushed
         if (keyCode == KeyEvent.KEYCODE_BACK) {
             if (recording) {
-                stopRecording();
+                stopRecord();
             }
             finish();
             return true;
@@ -192,11 +185,11 @@ public class MainActivity extends Activity implements OnClickListener {
     @Override
     public void onClick(View v) {
         if (!recording) {
-            startRecording();
+            startRecord();
             Log.w(LOG_TAG, "Start Button Pushed");
             recordButton.setText("Stop");
         } else {
-            stopRecording();
+            stopRecord();
             Log.w(LOG_TAG, "Stop Button Pushed");
             recordButton.setText("Start");
         }
@@ -224,7 +217,7 @@ public class MainActivity extends Activity implements OnClickListener {
 
             audioData = new short[bufferSize];
 
-            Log.d(LOG_TAG, "audioRecord.startRecording()");
+            Log.d(LOG_TAG, "audioRecord.startRecord()");
             audioRecord.startRecording();
 
             // Audio Capture/Encoding Loop
@@ -237,10 +230,10 @@ public class MainActivity extends Activity implements OnClickListener {
                     // Changes in this variable may not be picked up despite it being "volatile"
                     if (recording) {
                         try {
-                        	// Write to FFmpegFrameRecorder
-                            recorder.record(ShortBuffer.wrap(audioData, 0, bufferReadResult));
+                            // Write to FFmpegFrameRecorder
+                            recorder.recordSamples(ShortBuffer.wrap(audioData, 0, bufferReadResult));
                         } catch (FFmpegFrameRecorder.Exception e) {
-                            Log.v(LOG_TAG,e.getMessage());
+                            Log.e(LOG_TAG, e.getMessage());
                             e.printStackTrace();
                         }
                     }
@@ -258,7 +251,7 @@ public class MainActivity extends Activity implements OnClickListener {
         }
     }
 
-    class CameraView extends SurfaceView implements SurfaceHolder.Callback, PreviewCallback {
+    class CameraView extends SurfaceView implements SurfaceHolder.Callback, Camera.PreviewCallback {
 
     	private boolean previewRunning = false;
     	
@@ -282,38 +275,38 @@ public class MainActivity extends Activity implements OnClickListener {
 
         @Override
         public void surfaceCreated(SurfaceHolder holder) {
-			camera = Camera.open();
-			
-			try {
-				camera.setPreviewDisplay(holder);
-				camera.setPreviewCallback(this);
-				
-	            Camera.Parameters currentParams = camera.getParameters();
-	            Log.v(LOG_TAG,"Preview Framerate: " + currentParams.getPreviewFrameRate());
-	        	Log.v(LOG_TAG,"Preview imageWidth: " + currentParams.getPreviewSize().width + " imageHeight: " + currentParams.getPreviewSize().height);
-	        	
-	        	// Use these values
-	        	imageWidth = currentParams.getPreviewSize().width;
-	        	imageHeight = currentParams.getPreviewSize().height;
-	        	frameRate = currentParams.getPreviewFrameRate();				
-				
-	        	bitmap = Bitmap.createBitmap(imageWidth, imageHeight, Bitmap.Config.ALPHA_8);
-	    		
-	        	
+            camera = Camera.open(Camera.CameraInfo.CAMERA_FACING_FRONT);
+
+            try {
+                camera.setPreviewDisplay(holder);
+                camera.setPreviewCallback(this);
+
+                Camera.Parameters currentParams = camera.getParameters();
+                Log.v(LOG_TAG,"Preview Framerate: " + currentParams.getPreviewFrameRate());
+                Log.v(LOG_TAG,"Preview imageWidth: " + currentParams.getPreviewSize().width + " imageHeight: " + currentParams.getPreviewSize().height);
+
+                // Use these values
+                imageWidth = currentParams.getPreviewSize().width;
+                imageHeight = currentParams.getPreviewSize().height;
+                frameRate = currentParams.getPreviewFrameRate();
+
+                bitmap = Bitmap.createBitmap(imageWidth, imageHeight, Bitmap.Config.ALPHA_8);
+
+
 	        	/*
 				Log.v(LOG_TAG,"Creating previewBuffer size: " + imageWidth * imageHeight * ImageFormat.getBitsPerPixel(currentParams.getPreviewFormat())/8);
 	        	previewBuffer = new byte[imageWidth * imageHeight * ImageFormat.getBitsPerPixel(currentParams.getPreviewFormat())/8];
 				camera.addCallbackBuffer(previewBuffer);
 	            camera.setPreviewCallbackWithBuffer(this);
-	        	*/				
-				
-				camera.startPreview();
-				previewRunning = true;
-			}
-			catch (IOException e) {
-				Log.v(LOG_TAG,e.getMessage());
-				e.printStackTrace();
-			}	
+	        	*/
+
+                camera.startPreview();
+                previewRunning = true;
+            }
+            catch (IOException e) {
+                Log.v(LOG_TAG,e.getMessage());
+                e.printStackTrace();
+            }
         }
 
         public void surfaceChanged(SurfaceHolder holder, int format, int width, int height) {
@@ -331,7 +324,7 @@ public class MainActivity extends Activity implements OnClickListener {
     				//p.setPreviewSize(imageWidth, imageHeight);
     			    //p.setPreviewFrameRate(frameRate);
     				//camera.setParameters(cameraParameters);
-    				
+
     				camera.setPreviewDisplay(holder);
     				camera.startPreview();
     				previewRunning = true;
@@ -339,48 +332,53 @@ public class MainActivity extends Activity implements OnClickListener {
     			catch (IOException e) {
     				Log.e(LOG_TAG,e.getMessage());
     				e.printStackTrace();
-    			}	
-    		}            
+    			}
+    		}
             */
-            
+
             // Get the current parameters
             Camera.Parameters currentParams = camera.getParameters();
             Log.v(LOG_TAG,"Preview Framerate: " + currentParams.getPreviewFrameRate());
-        	Log.v(LOG_TAG,"Preview imageWidth: " + currentParams.getPreviewSize().width + " imageHeight: " + currentParams.getPreviewSize().height);
-        	
-        	// Use these values
-        	imageWidth = currentParams.getPreviewSize().width;
-        	imageHeight = currentParams.getPreviewSize().height;
-        	frameRate = currentParams.getPreviewFrameRate();
-        	
-        	// Create the yuvIplimage if needed
-			yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_8U, 2);
-        	//yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_32S, 2);
+            Log.v(LOG_TAG,"Preview imageWidth: " + currentParams.getPreviewSize().width + " imageHeight: " + currentParams.getPreviewSize().height);
+
+            // Use these values
+            imageWidth = currentParams.getPreviewSize().width;
+            imageHeight = currentParams.getPreviewSize().height;
+            frameRate = currentParams.getPreviewFrameRate();
+
+            // Create the yuvIplimage if needed
+            //yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_8U, 2);
+            yuvImage = new Frame(imageWidth, imageHeight, Frame.DEPTH_UBYTE, 2);
+            //yuvIplimage = IplImage.create(imageWidth, imageHeight, IPL_DEPTH_32S, 2);
         }
 
         @Override
         public void surfaceDestroyed(SurfaceHolder holder) {
             try {
                 camera.setPreviewCallback(null);
-                
-    			previewRunning = false;
-    			camera.release();
-                
+
+                previewRunning = false;
+                camera.release();
+
             } catch (RuntimeException e) {
-            	Log.v(LOG_TAG,e.getMessage());
-            	e.printStackTrace();
+                Log.v(LOG_TAG,e.getMessage());
+                e.printStackTrace();
             }
         }
 
         @Override
         public void onPreviewFrame(byte[] data, Camera camera) {
-            
-            if (yuvIplimage != null && recording) {
-            	videoTimestamp = 1000 * (System.currentTimeMillis() - startTime);
 
-            	// Put the camera preview frame right into the yuvIplimage object
-            	yuvIplimage.getByteBuffer().put(data);
-                
+            if (yuvImage != null && recording) {
+                videoTimestamp = 1000 * (System.currentTimeMillis() - startTime);
+
+                // Put the camera preview frame right into the yuvIplimage object
+                //yuvIplimage.getByteBuffer().put(data);
+
+                // region
+                ((ByteBuffer)yuvImage.image[0].position(0)).put(data);
+                // endregion
+
                 // FAQ about IplImage:
                 // - For custom raw processing of data, getByteBuffer() returns an NIO direct
                 //   buffer wrapped around the memory pointed by imageData, and under Android we can
@@ -406,19 +404,23 @@ public class MainActivity extends Activity implements OnClickListener {
             	float bottomy = 100; 
             	RectF rectangle = new RectF(leftx,topy,rightx,bottomy); 
             	canvas.drawRect(rectangle, paint);
-       		 
+
             	bitmap.copyPixelsToBuffer(yuvIplimage.getByteBuffer());
                 */
                 //Log.v(LOG_TAG,"Writing Frame");
-                
+
                 try {
-                	
-                	// Get the correct time
+
+                    // Get the correct time
                     recorder.setTimestamp(videoTimestamp);
-                    
+
                     // Record the image into FFmpegFrameRecorder
-                    recorder.record(yuvIplimage);
-                    
+                    //recorder.record(yuvIplimage);
+
+                    // region
+                    recorder.record(yuvImage);
+                    // endregion
+
                 } catch (FFmpegFrameRecorder.Exception e) {
                     Log.v(LOG_TAG,e.getMessage());
                     e.printStackTrace();
