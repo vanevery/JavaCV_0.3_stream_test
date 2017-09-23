@@ -1,5 +1,6 @@
 package com.example.javacv.stream.test2;
 
+import android.Manifest;
 import android.content.Context;
 import android.content.pm.ActivityInfo;
 import android.graphics.Bitmap;
@@ -19,6 +20,7 @@ import android.view.SurfaceView;
 import android.view.View;
 import android.widget.Button;
 import android.widget.LinearLayout;
+import android.widget.Toast;
 
 import org.bytedeco.javacv.FFmpegFrameRecorder;
 import org.bytedeco.javacv.Frame;
@@ -26,6 +28,8 @@ import org.bytedeco.javacv.Frame;
 import java.io.IOException;
 import java.nio.ByteBuffer;
 import java.nio.ShortBuffer;
+
+import pub.devrel.easypermissions.EasyPermissions;
 
 public class MainActivity extends AppCompatActivity implements View.OnClickListener {
 
@@ -56,6 +60,7 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
 
     private Button recordButton;
     private LinearLayout mainLayout;
+    private boolean init = false;
 
     @Override
     public void onCreate(Bundle savedInstanceState) {
@@ -63,13 +68,24 @@ public class MainActivity extends AppCompatActivity implements View.OnClickListe
         
         setRequestedOrientation(ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE);
         setContentView(R.layout.activity_main);
-
-        initLayout();
     }
 
     @Override
     protected void onResume() {
         super.onResume();
+
+        boolean hasPermissions = EasyPermissions.hasPermissions(this, Manifest.permission.CAMERA)
+                && EasyPermissions.hasPermissions(this, Manifest.permission.RECORD_AUDIO)
+                && EasyPermissions.hasPermissions(this, Manifest.permission.WRITE_EXTERNAL_STORAGE);
+
+        if (hasPermissions) {
+            if (!init) {
+                initLayout();
+                init = true;
+            }
+        } else {
+            Toast.makeText(this, "Please, grant all permissions in app settings", Toast.LENGTH_LONG).show();
+        }
 
         if (mWakeLock == null) {
             PowerManager pm = (PowerManager) getSystemService(Context.POWER_SERVICE); 
