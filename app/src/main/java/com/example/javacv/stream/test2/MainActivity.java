@@ -15,6 +15,7 @@ import android.media.AudioFormat;
 import android.media.AudioRecord;
 import android.media.MediaRecorder;
 import android.os.Bundle;
+import android.os.Environment;
 import android.os.PowerManager;
 import android.util.Log;
 import android.view.KeyEvent;
@@ -39,8 +40,8 @@ public class MainActivity extends Activity implements OnClickListener {
 
     private PowerManager.WakeLock mWakeLock;
 
-	private String ffmpeg_link = "rtmp://live:live@128.122.151.108:1935/live/test.flv";
-    //private String ffmpeg_link = "/mnt/sdcard/new_stream.flv";
+	//private String ffmpeg_link = "rtmp://live:live@128.122.151.108:1935/live/test.flv";
+    private String ffmpeg_link = Environment.getExternalStorageDirectory() + "/new_stream.flv";
 	
     private volatile FFmpegFrameRecorder recorder;
     boolean recording = false;
